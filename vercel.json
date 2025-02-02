@@ -2,13 +2,6 @@
   "version": 2,
   "builds": [
     {
-      "src": "collect_static.sh",
-      "use": "@vercel/build-utils",
-      "config": {
-        "command": "bash collect_static.sh"
-      }
-    },
-    {
       "src": "speedvoice_backend/wsgi.py",
       "use": "@vercel/python",
       "config": {
