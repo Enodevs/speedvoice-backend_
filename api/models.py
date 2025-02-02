@@ -46,6 +46,7 @@ class Business(models.Model):
     city = models.CharField(max_length=100)
     currency = models.CharField(choices=CURRENCY, default="USD", max_length=100)
     description = models.CharField(max_length=100, default="")
+    active = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

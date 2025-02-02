@@ -147,10 +147,14 @@ class BusinessGetView(generics.RetrieveUpdateDestroyAPIView):
         try:
             owner_id = self.kwargs['owner_id']
             owner = User.objects.get(id=owner_id)
-            business = api_models.Business.objects.get(owner=owner)
+            business = api_models.Business.objects.get(owner=owner, active=True)
             return business
-        except (User.DoesNotExist, api_models.Business.DoesNotExist):
+        except User.DoesNotExist:
+            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        except api_models.Business.DoesNotExist:
             return Response({"error": "Business not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": f"An unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     
     def update(self, request, *args, **kwargs):
@@ -203,6 +207,14 @@ class BusinessCreateView(APIView):
 
             user = User.objects.get(id=user_id)
 
+            try:
+                active_business = api_models.Business.objects.get(owner=user, active=True)
+                active_business.active = False
+                active_business.save()
+            except api_models.Business.DoesNotExist:
+                pass #No active business found, do nothing
+
+
             api_models.Business.objects.create(
                 owner=user,
                 name=name,
@@ -210,6 +222,7 @@ class BusinessCreateView(APIView):
                 state=state,
                 city=city,
                 currency=currency,
+                active=True,
             )
             
             return Response({"message": "Business created successfully"}, status=status.HTTP_201_CREATED)
