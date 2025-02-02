@@ -5,21 +5,29 @@
       "src": "speedvoice_backend/wsgi.py",
       "use": "@vercel/python",
       "config": {
-        "maxLambdaSize": "50mb"
+        "maxLambdaSize": "50mb",
+        "runtime": "python3.13.1"
+      }
+    },
+    {
+      "src": "build.sh",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "staticfiles_build"
       }
     }
   ],
   "routes": [
     {
       "src": "/static/(.*)",
-      "dest": "/static/$1"
+      "dest": "/staticfiles/$1"
     },
     {
       "src": "/api/(.*)",
       "dest": "speedvoice_backend/wsgi.py"
     },
     {
-      "src": "/*",
+      "src": "/(.*)",
       "dest": "speedvoice_backend/wsgi.py"
     }
   ]
