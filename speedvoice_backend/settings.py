@@ -25,13 +25,13 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env('DJANGO_SECRET_KEY')
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = [env('WEBSITE_HOSTNAME'), '127.0.0.1', 'localhost']
-CSRF_TRUSTED_ORIGINS = ['https://' + env('WEBSITE_HOSTNAME')]
+ALLOWED_HOSTS = [os.environ.get('WEBSITE_HOSTNAME'), '127.0.0.1', 'localhost']
+CSRF_TRUSTED_ORIGINS = ['https://' + os.environ.get('WEBSITE_HOSTNAME')]
 
 
 # Application definition
@@ -102,11 +102,11 @@ DATABASES = {
     # }
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": env('POTGRESQL_DATABASE_NAME'),
-        "USER": env('POTGRESQL_DATABASE_USER'),
-        "PASSWORD": env('POTGRESQL_DATABASE_PASSWORD'),
-        "HOST": env('POTGRESQL_DATABASE_HOST'),
-        "PORT": env('POTGRESQL_DATABASE_PORT'),
+        "NAME": os.environ.get('POTGRESQL_DATABASE_NAME'),
+        "USER": os.environ.get('POTGRESQL_DATABASE_USER'),
+        "PASSWORD": os.environ.get('POTGRESQL_DATABASE_PASSWORD'),
+        "HOST": os.environ.get('POTGRESQL_DATABASE_HOST'),
+        "PORT": os.environ.get('POTGRESQL_DATABASE_PORT'),
     }
 }
 
