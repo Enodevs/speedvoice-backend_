@@ -2,5 +2,5 @@
 
 # Collect static files
 echo "Collecting static files..."
-python3.13 manage.py collectstatic --noinput
+python3.12 manage.py collectstatic --noinput
 
