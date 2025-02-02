@@ -2,7 +2,7 @@
     "version": 2,
     "builds": [
       {
-        "src": "build.sh",
+        "src": "speedvoice_backend/wsgi.py",
         "use": "@vercel/python",
         "config": {
           "distDir": "staticfiles"
@@ -11,7 +11,7 @@
       {
         "src": "speedvoice_backend/wsgi.py",
         "use": "@vercel/python",
-        "config": { "maxLambdaSize": "15mb" }
+        "config": { "maxLambdaSize": "50mb" }
       }
     ],
     "routes": [
