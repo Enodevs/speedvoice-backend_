@@ -6,7 +6,8 @@
       "use": "@vercel/python",
       "config": {
         "maxLambdaSize": "50mb",
-        "runtime": "python3.13.1"
+        "runtime": "python3.13.1",
+        "distDir": "staticfiles"
       }
     }
   ],
