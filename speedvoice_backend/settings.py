@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 from pathlib import Path
 import os
 import environ
+import dj_database_url
 
 env = environ.Env()
 
@@ -100,14 +101,7 @@ DATABASES = {
     #     'ENGINE': 'django.db.backends.sqlite3',
     #     'NAME': BASE_DIR / 'db.sqlite3',
     # }
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get('POTGRESQL_DATABASE_NAME'),
-        "USER": os.environ.get('POTGRESQL_DATABASE_USER'),
-        "PASSWORD": os.environ.get('POTGRESQL_DATABASE_PASSWORD'),
-        "HOST": os.environ.get('POTGRESQL_DATABASE_HOST'),
-        "PORT": os.environ.get('POTGRESQL_DATABASE_PORT'),
-    }
+    "default": dj_database_url.parse(os.environ.get('CONNECTION_STRING'))
 }
 
 

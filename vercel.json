@@ -2,10 +2,9 @@
   "version": 2,
   "builds": [
     {
-      "src": "build.sh",
-      "use": "@vercel/build-utils",
+      "src": "speedvoice_backend/wsgi.py",
+      "use": "@vercel/python",
       "config": {
-        "command": "bash build.sh",
         "maxLambdaSize": "50mb"
       }
     }
@@ -20,7 +19,7 @@
       "dest": "speedvoice_backend/wsgi.py"
     },
     {
-      "src": "/(.*)",
+      "src": "/*",
       "dest": "speedvoice_backend/wsgi.py"
     }
   ]
