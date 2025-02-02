@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # # Create a virtual environment
-# python3.13.1 -m venv venv
-# source venv/bin/activate
+python3.13.1 -m venv venv
+source venv/bin/activate
 
 # Install dependencies
 echo "Building the project and installing dependencies..."
