@@ -143,7 +143,7 @@ USE_TZ = True
 
 STORAGES = {
     "default": {
-        "BACKEND": "django.core.file.storage.FileSystemStorage"
+        "BACKEND": "django.core.files.storage.FileSystemStorage"
     },
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"

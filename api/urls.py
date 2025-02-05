@@ -18,6 +18,7 @@ urlpatterns = [
     path('dashboard/invoices-create/', api_views.InvoiceCreateView.as_view()),
     path('dashboard/invoice-update/', api_views.InvoiceUpdateView.as_view()),
     path('dashboard/invoice/<Uid>/', api_views.InvoiceView.as_view()),
+    path('dashboard/invoice/delete/<id>/<Uid>/', api_views.InvoiceDeleteView.as_view()),
 
     ###########  Category ###########
     path('dashboard/categories/<user_id>/', api_views.CategoryListView.as_view(), name='categories_list'),

@@ -330,6 +330,31 @@ class InvoiceView(generics.RetrieveAPIView):
             return Response({"error": "Invoice not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"error": f"Error retrieving invoice: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class InvoiceDeleteView(generics.DestroyAPIView):
+    serializer_class = api_serializer.InvoiceSerializer
+    permission_classes = [AllowAny] #Corrected missing brackets
+
+    def get_object(self):
+        try:
+            invoice_id = self.kwargs['Uid']
+            user_id = self.kwargs['id']
+            user = User.objects.get(id=user_id)
+            owner = api_models.Business.objects.get(owner=user, active=True) #More efficient to use get instead of filter.first()
+            invoice = api_models.Invoice.objects.get(Uid=invoice_id, business=owner)
+            self.check_object_permissions(self.request, invoice) #Add permission check
+            return invoice
+        except (api_models.Invoice.DoesNotExist, api_models.Business.DoesNotExist, User.DoesNotExist):
+            return Response({"error": "Invoice not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+             return Response({"error": f"Error retrieving invoice: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+    def delete(self, request, *args, **kwargs):
+        invoice = self.get_object()
+        invoice.delete()
+        return Response({"message": "Deleted successfully"}, status=status.HTTP_200_OK)
+
     
 class InvoiceUpdateView(APIView):
     permission_classes = [AllowAny]
@@ -489,7 +514,7 @@ class CustomerCreateView(APIView):
             phone_number = request.data["phone_number"]
             user_id = request.data["user_id"]
             user = User.objects.get(id=user_id)
-            business = api_models.Business.objects.get(owner=user)
+            business = api_models.Business.objects.get(owner=user, active=True)
 
             api_models.Customer.objects.create(
                 full_name=full_name, 
@@ -611,6 +636,7 @@ class ProductCreateView(APIView):
         except (User.DoesNotExist, api_models.Business.DoesNotExist, api_models.Category.DoesNotExist):
             return Response({"error": "Related object not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
+            print(e)
             return Response({"error": f"Error creating product: {e}"}, status=status.HTTP_400_BAD_REQUEST)
 
 class ProductView(generics.RetrieveUpdateDestroyAPIView):
@@ -622,7 +648,7 @@ class ProductView(generics.RetrieveUpdateDestroyAPIView):
             user_id = self.kwargs['user_id']
             product_id = self.kwargs['id']
             user = User.objects.get(id=user_id)
-            business = api_models.Business.objects.get(owner=user)
+            business = api_models.Business.objects.get(owner=user, active=True)
             product = api_models.Product.objects.get(id=product_id, owner=business)
             return product
         except (User.DoesNotExist, api_models.Business.DoesNotExist, api_models.Product.DoesNotExist):
