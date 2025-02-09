@@ -279,7 +279,7 @@ class InvoiceCreateView(APIView):
             # Get the user instance
             user = User.objects.get(id=user_id)
             # Get the business instance associated with the user
-            business = api_models.Business.objects.get(owner=user)
+            business = api_models.Business.objects.get(owner=user, active=True)
             customer = api_models.Customer.objects.get(full_name=customer_name, business=business)
 
             # Create the invoice
@@ -374,7 +374,7 @@ class InvoiceUpdateView(APIView):
             _status = request.data["status"]
 
             user = User.objects.get(id=user_id)
-            business = api_models.Business.objects.get(owner=user)
+            business = api_models.Business.objects.get(owner=user, active=True)
             
             customer = api_models.Customer.objects.get(full_name=customer_name, business=business)
 
@@ -404,7 +404,7 @@ class CategoryListView(generics.ListAPIView):
         try:
             user_id = self.kwargs['user_id']
             user = User.objects.get(id=user_id)
-            business = api_models.Business.objects.get(owner=user)
+            business = api_models.Business.objects.get(owner=user, active=True)
             categories = api_models.Category.objects.filter(business=business)
             return categories
         except (User.DoesNotExist, api_models.Business.DoesNotExist):
@@ -432,7 +432,7 @@ class CategoryCreateView(APIView):
             user_id = request.data["user_id"]
             name = request.data["name"]
             user = User.objects.get(id=user_id)
-            business = api_models.Business.objects.get(owner=user)
+            business = api_models.Business.objects.get(owner=user, active=True)
 
             api_models.Category.objects.create(
                 name=name, 
@@ -455,7 +455,7 @@ class CategoryView(generics.RetrieveUpdateDestroyAPIView):
         try:
             user_id = self.kwargs['user_id']
             user = User.objects.get(id=user_id)
-            business = api_models.Business.objects.get(owner=user)
+            business = api_models.Business.objects.get(owner=user, active=True)
             category_name = self.kwargs['name']
             category = api_models.Category.objects.get(name=category_name, business=business)
             return category
@@ -482,7 +482,7 @@ class CustomerListView(generics.ListAPIView):
         try:
             user_id = self.kwargs['user_id']
             user = User.objects.get(id=user_id)
-            business = api_models.Business.objects.get(owner=user)
+            business = api_models.Business.objects.get(owner=user, active=True)
             customers = api_models.Customer.objects.filter(business=business)
             return customers
         except (User.DoesNotExist, api_models.Business.DoesNotExist):
@@ -570,7 +570,7 @@ class CustomerListView(generics.ListAPIView):
         try:
             user_id = self.kwargs['user_id']
             user = User.objects.get(id=user_id)
-            business = api_models.Business.objects.get(owner=user)
+            business = api_models.Business.objects.get(owner=user, active=True)
             customers = api_models.Customer.objects.filter(business=business)
             return customers
         except (User.DoesNotExist, api_models.Business.DoesNotExist):
@@ -622,7 +622,7 @@ class ProductCreateView(APIView):
 
             user = User.objects.get(id=user_id)
 
-            business = api_models.Business.objects.get(owner=user)
+            business = api_models.Business.objects.get(owner=user, active=True)
             category = api_models.Category.objects.get(name=category, business=business)
 
             product = api_models.Product.objects.create(name=name, category=category, price=price, owner=business)
@@ -730,7 +730,7 @@ class InvoiceItemCreateView(APIView):
             quantity = request.data["quantity"]
 
             user = User.objects.get(id=user_id)
-            business = api_models.Business.objects.get(owner=user)
+            business = api_models.Business.objects.get(owner=user, active=True)
             invoice = api_models.Invoice.objects.get(Uid=invoice_Uid)  # Using Uid field instead of id
             product = api_models.Product.objects.get(id=product_id, owner=business)
 
@@ -770,7 +770,7 @@ class InvoiceItemView(generics.RetrieveUpdateDestroyAPIView):
         user_id = request.data["user_id"]
         product_id = request.data["product_id"]
         user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user)
+        business = api_models.Business.objects.get(owner=user, active=True)
         product = api_models.Product.objects.get(id=product_id, owner=business)
         invoice_item_instance.quantity = quantity
         invoice_item_instance.product = product
@@ -786,7 +786,7 @@ class CategoryListView(generics.ListAPIView):
     def get_queryset(self):
         user_id = self.kwargs['user_id']
         user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user)
+        business = api_models.Business.objects.get(owner=user, active=True)
         return api_models.Category.objects.filter(business=business)
 
 class CategoryCreateView(generics.CreateAPIView):
@@ -809,7 +809,7 @@ class CategoryCreateView(generics.CreateAPIView):
         name = request.data["name"]
 
         user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user)
+        business = api_models.Business.objects.get(owner=user, active=True)
 
         api_models.Category.objects.create(business=business, name=name)
         return Response({"message": "Category created successfully"}, status=status.HTTP_201_CREATED)
@@ -821,7 +821,7 @@ class AdminView(generics.ListAPIView):
     def get_queryset(self):
         user_id = self.kwargs['user_id']
         user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user)
+        business = api_models.Business.objects.get(owner=user, active=True)
 
         invoices = api_models.Invoice.objects.filter(business=business)
         customers = api_models.Customer.objects.filter(business=business)
@@ -858,7 +858,7 @@ class DashboardStatsView(generics.ListAPIView):
     def get_queryset(self):
         user_id = self.kwargs["user_id"]
         user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user)
+        business = api_models.Business.objects.get(owner=user, active=True)
 
         invoiceData = api_models.Invoice.objects.filter(business=business).annotate(month=ExtractMonth("date_created")).values("month").annotate(invoices=Count("id")).values("month", "invoices")
 
@@ -871,7 +871,7 @@ class InvoiceStatsView(generics.ListAPIView):
     def get_queryset(self):
         user_id = self.kwargs["user_id"]
         user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user)
+        business = api_models.Business.objects.get(owner=user, active=True)
 
         invoiceData = (
             api_models.Invoice.objects.filter(business=business).annotate(month=ExtractMonth("date_created")).values("month")
@@ -891,9 +891,123 @@ class ReceiptListView(generics.ListAPIView):
     def get_queryset(self):
         user_id = self.kwargs['user_id']
         user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user)
+        business = api_models.Business.objects.get(owner=user, active=True)
         receipts = api_models.Receipt.objects.filter(business=business)
         return receipts
+
+class CategoryCreateView(generics.CreateAPIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['user_id', 'name'],
+            properties={
+                'user_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='User ID'),
+                'name': openapi.Schema(type=openapi.TYPE_STRING, description='Category Name'),
+            }
+        ),
+        operation_description="Create a new category for a business"
+    )
+    
+    def post(self, request, *args, **kwargs):
+        user_id = request.data["user_id"]
+        name = request.data["name"]
+
+        user = User.objects.get(id=user_id)
+        business = api_models.Business.objects.get(owner=user, active=True)
+
+        api_models.Category.objects.create(business=business, name=name)
+        return Response({"message": "Category created successfully"}, status=status.HTTP_201_CREATED)
+
+class AdminView(generics.ListAPIView):
+    permission_classes = [AllowAny]
+    serializer_class = api_serializer.InvoiceAdminSerializer
+
+    def get_queryset(self):
+        user_id = self.kwargs['user_id']
+        user = User.objects.get(id=user_id)
+        business = api_models.Business.objects.get(owner=user, active=True)
+
+        invoices = api_models.Invoice.objects.filter(business=business)
+        customers = api_models.Customer.objects.filter(business=business)
+        products = api_models.Product.objects.filter(owner=business)
+
+        for invoice in invoices:
+            invoice.set_unpaid()
+
+        unpaid_invoices = api_models.Invoice.objects.filter(business=business, status="unpaid")
+        draft_invoices = api_models.Invoice.objects.filter(business=business, status="draft")
+        paid_invoices = api_models.Invoice.objects.filter(business=business, status="paid")
+        pending_invoices = api_models.Invoice.objects.filter(business=business, status="pending")
+
+        return [{
+            "invoices": invoices.count(),
+            "draft_invoices": draft_invoices.count(),
+            "paid_invoices": paid_invoices.count(),
+            "unpaid_invoices": unpaid_invoices.count(),
+            "pending_invoices": pending_invoices.count(),
+            "customers": customers.count(),
+            "products": products.count(),
+        }]
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class DashboardStatsView(generics.ListAPIView):
+    permission_classes = [AllowAny]
+    serializer_class = api_serializer.DashboardStatsSerializer
+
+    def get_queryset(self):
+        user_id = self.kwargs["user_id"]
+        user = User.objects.get(id=user_id)
+        business = api_models.Business.objects.get(owner=user, active=True)
+
+        invoiceData = api_models.Invoice.objects.filter(business=business).annotate(month=ExtractMonth("date_created")).values("month").annotate(invoices=Count("id")).values("month", "invoices")
+
+        return invoiceData
+
+class InvoiceStatsView(generics.ListAPIView):
+    permission_classes = [AllowAny]
+    serializer_class = api_serializer.InvoiceStatsSerializer
+
+    def get_queryset(self):
+        user_id = self.kwargs["user_id"]
+        user = User.objects.get(id=user_id)
+        business = api_models.Business.objects.get(owner=user, active=True)
+
+        invoiceData = (
+            api_models.Invoice.objects.filter(business=business).annotate(month=ExtractMonth("date_created")).values("month")
+            .annotate(
+                invoices=Count("id"),
+                paid=Count('id', filter=Q(status='paid'))
+            )
+            .values("month", "invoices", "paid")
+        )
+
+        return invoiceData
+    
+class ReceiptGetView(generics.RetrieveAPIView):
+    serializer_class = api_serializer.ReceiptSerializer
+    permission_classes = [AllowAny]
+
+    def get_object(self):
+        user_id = self.kwargs['user_id']
+        Uid = self.kwargs['Uid']
+
+        try:
+            user = User.objects.get(id=user_id)
+            business = api_models.Business.objects.get(owner=user, active=True)
+            receipt = api_models.Receipt.objects.get(business=business, Uid=Uid)
+            return receipt
+        except (User.DoesNotExist, api_models.Business.DoesNotExist, api_models.Receipt.DoesNotExist):
+            return Response({"error": "Receipt not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": f"Error retrieving receipt: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 # class InvoiceStatsView(generics.ListAPIView):
@@ -1132,128 +1246,3 @@ class ReceiptListView(generics.ListAPIView):
         business = api_models.Business.objects.get(owner=user)
         receipts = api_models.Receipt.objects.filter(business=business)
         return receipts
-
-
-# class InvoiceStatsView(generics.ListAPIView):
-#     permission_classes = [AllowAny]
-#     serializer_class
-
-    permission_classes = [AllowAny]
-
-    def get_queryset(self):
-        user_id = self.kwargs['user_id']
-        user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user)
-        return api_models.Category.objects.filter(business=business)
-
-class CategoryCreateView(generics.CreateAPIView):
-    permission_classes = [AllowAny]
-
-    @swagger_auto_schema(
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=['user_id', 'name'],
-            properties={
-                'user_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='User ID'),
-                'name': openapi.Schema(type=openapi.TYPE_STRING, description='Category Name'),
-            }
-        ),
-        operation_description="Create a new category for a business"
-    )
-    
-    def post(self, request, *args, **kwargs):
-        user_id = request.data["user_id"]
-        name = request.data["name"]
-
-        user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user)
-
-        api_models.Category.objects.create(business=business, name=name)
-        return Response({"message": "Category created successfully"}, status=status.HTTP_201_CREATED)
-
-class AdminView(generics.ListAPIView):
-    permission_classes = [AllowAny]
-    serializer_class = api_serializer.InvoiceAdminSerializer
-
-    def get_queryset(self):
-        user_id = self.kwargs['user_id']
-        user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user)
-
-        invoices = api_models.Invoice.objects.filter(business=business)
-        customers = api_models.Customer.objects.filter(business=business)
-        products = api_models.Product.objects.filter(owner=business)
-
-        for invoice in invoices:
-            invoice.set_unpaid()
-
-        unpaid_invoices = api_models.Invoice.objects.filter(business=business, status="unpaid")
-        draft_invoices = api_models.Invoice.objects.filter(business=business, status="draft")
-        paid_invoices = api_models.Invoice.objects.filter(business=business, status="paid")
-        pending_invoices = api_models.Invoice.objects.filter(business=business, status="pending")
-
-        return [{
-            "invoices": invoices.count(),
-            "draft_invoices": draft_invoices.count(),
-            "paid_invoices": paid_invoices.count(),
-            "unpaid_invoices": unpaid_invoices.count(),
-            "pending_invoices": pending_invoices.count(),
-            "customers": customers.count(),
-            "products": products.count(),
-        }]
-    
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    
-class DashboardStatsView(generics.ListAPIView):
-    permission_classes = [AllowAny]
-    serializer_class = api_serializer.DashboardStatsSerializer
-
-    def get_queryset(self):
-        user_id = self.kwargs["user_id"]
-        user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user)
-
-        invoiceData = api_models.Invoice.objects.filter(business=business).annotate(month=ExtractMonth("date_created")).values("month").annotate(invoices=Count("id")).values("month", "invoices")
-
-        return invoiceData
-
-class InvoiceStatsView(generics.ListAPIView):
-    permission_classes = [AllowAny]
-    serializer_class = api_serializer.InvoiceStatsSerializer
-
-    def get_queryset(self):
-        user_id = self.kwargs["user_id"]
-        user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user)
-
-        invoiceData = (
-            api_models.Invoice.objects.filter(business=business).annotate(month=ExtractMonth("date_created")).values("month")
-            .annotate(
-                invoices=Count("id"),
-                paid=Count('id', filter=Q(status='paid'))
-            )
-            .values("month", "invoices", "paid")
-        )
-
-        return invoiceData
-    
-class ReceiptListView(generics.ListAPIView):
-    serializer_class = api_serializer.ReceiptSerializer
-    permission_classes = [AllowAny]
-
-    def get_queryset(self):
-        user_id = self.kwargs['user_id']
-        user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user)
-        receipts = api_models.Receipt.objects.filter(business=business)
-        return receipts
-
-
-# class InvoiceStatsView(generics.ListAPIView):
-#     permission_classes = [AllowAny]
-#     serializer_class
-

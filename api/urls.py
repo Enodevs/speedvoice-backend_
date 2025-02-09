@@ -49,4 +49,5 @@ urlpatterns = [
 
     ###########  Receipts ###########
     path('dashboard/receipts/<user_id>/', api_views.ReceiptListView.as_view()),
+    path('dashboard/receipt/<user_id>/<Uid>/', api_views.ReceiptGetView.as_view(), name='receipt_get'),
 ]
