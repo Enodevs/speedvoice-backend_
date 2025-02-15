@@ -10,19 +10,23 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'fullname', 'email', 'otp', 'email_token', 'customer_id', 'hasAccess', 'product_type']
+        fields = ['id', 'fullname', 'email', 'customer_id', 'hasAccess', 'product_type']
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
         auth_token, _ = Token.objects.get_or_create(user=user)
-
-        print(auth_token)
+        business = api_models.Business.objects.filter(owner=user).first()
+        active_business_id = business.id if business else None
 
         token['email'] = user.email
         token['fullname'] = user.fullname
         token['auth_token'] = str(auth_token)
+        token['active_business'] = active_business_id
+        token['customer_id'] = user.customer_id
+        token['hasAccess'] = user.hasAccess
+        token['product_type'] = user.product_type
 
         return token
 
@@ -62,6 +66,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         # Handle additional fields (customer_id, product_type, and hasAccess)
         user.customer_id = validated_data['customer_id']
         user.product_type = validated_data['product_type']
+        user.hasAccess = True
 
         # Set a random password for the user
         user.set_password("pass1000")
