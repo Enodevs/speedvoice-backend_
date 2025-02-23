@@ -3,6 +3,7 @@ from userauth.models import User # type:ignore
 from django.utils.timezone import now # type:ignore
 from datetime import timedelta # type:ignore
 from shortuuid.django_fields import ShortUUIDField # type:ignore
+import secrets
 
 INVOICE_STATUS = (
     ("paid", "Paid"),
@@ -12,11 +13,32 @@ INVOICE_STATUS = (
 )
 
 CURRENCY = (
-    ("USD", "USD"),
-    ("EUR", "EUR"),
-    ("NGN", "NGN"),
-    ("YEN", "YEN"),
+    ("USD", "USD - US Dollar"),
+    ("EUR", "EUR - Euro"),
+    ("GBP", "GBP - British Pound"),
+    ("JPY", "JPY - Japanese Yen"), 
+    ("AUD", "AUD - Australian Dollar"),
+    ("CAD", "CAD - Canadian Dollar"),
+    ("NGN`", "NGN - Nigerian Naira"),
 )
+
+NOTI_TYPE = (
+    ("invoice_created", "Invoice Created"),
+    ("invoice_updated", "Invoice Updated"),
+    ("invoice_paid", "Invoice Paid"),
+    ("invoice_overdue", "Invoice Overdue"),
+    ("customer_added", "Customer Added"),
+    ("customer_updated", "Customer Updated"),
+    ("product_added", "Product Added"),
+    ("product_updated", "Product Updated"),
+    ("business_created", "Business Created"),
+    ("business_updated", "Business Updated"),
+    ("receipt_created", "Receipt Created"),
+    ("receipt_updated", "Receipt Updated"),
+    ("category_created", "Category Created"),
+    ("other", "Other"),
+)
+
 
 def user_directory_path(instance, filename):
     ext = filename.split(".")[-1]
@@ -157,7 +179,7 @@ class Receipt(models.Model):
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, related_name="customer_receipt")
     signature = models.ForeignKey(Signature, on_delete=models.DO_NOTHING, null=True, blank=True)
     invoice = models.OneToOneField(Invoice, on_delete=models.CASCADE, related_name="invoice_receipt")
-    Uid = ShortUUIDField(unique=True, max_length=15, length=10, alphabet="abcdefghijklmnopqrstuvwxyz#1234567890", prefix="Rcpt-")
+    Uid = ShortUUIDField(unique=True, max_length=15, length=10, alphabet="abcdefghijklmnopqrstuvwxyz1234567890", prefix="Rcpt-")
     date_created = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -165,4 +187,37 @@ class Receipt(models.Model):
 
     def __str__(self):
         return self.invoice.title
+    
+class Notification(models.Model):
+    business = models.ForeignKey(Business, related_name="noti_business", on_delete=models.CASCADE)
+    title = models.CharField(max_length=50)
+    description = models.CharField(max_length=100)
+    type = models.CharField(max_length=50, choices=NOTI_TYPE)
+    seen = models.BooleanField(default=False)
+    date_created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_created']
+
+    def __str__(self):
+        return self.title
+    
+class InvoiceAccessToken(models.Model):
+    token = models.CharField(max_length=100, unique=True)
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    @staticmethod
+    def create_token(invoice):
+        token = secrets.token_urlsafe(32)
+        expires_at = now() + timedelta(hours=48)
+        InvoiceAccessToken.objects.create(invoice=invoice, token=token, expires_at=expires_at)
+        return token
+    
+    def is_valid(self):
+        return now() < self.expires_at
+    
+    def __str__(self):
+        return self.token
 

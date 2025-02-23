@@ -1,28 +1,29 @@
-from django.shortcuts import render # type:ignore
-from rest_framework_simplejwt.views import TokenObtainPairView # type:ignore
-from api import serializer as api_serializer # type:ignore
-from rest_framework.decorators import APIView # type:ignore
-from rest_framework import generics # type:ignore
-from api import models as api_models # type:ignore
+from rest_framework_simplejwt.views import TokenObtainPairView
+from api import serializer as api_serializer
+from rest_framework.decorators import APIView
+from rest_framework import generics
+from api import models as api_models
 from userauth.models import User
-from rest_framework.permissions import AllowAny, IsAuthenticated # type:ignore
-from rest_framework import status # type:ignore
-from rest_framework.response import Response # type:ignore
-from rest_framework_simplejwt.tokens import RefreshToken # type:ignore
-from django.template.loader import render_to_string # type:ignore
-from django.conf import settings # type:ignore
-from django.utils.html import strip_tags # type:ignore
-from django.db.models.functions import ExtractMonth # type:ignore
-from django.db.models import Count, Sum, Q # type:ignore
-from rest_framework.authtoken.models import Token # type:ignore
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework import status
+from rest_framework.response import Response
+from django.db.models.functions import ExtractMonth
+from django.db.models import Count, Sum, Q
+from rest_framework.authtoken.models import Token
+from rest_framework.exceptions import NotFound, ValidationError, APIException
 
-from drf_yasg import openapi # type:ignore
-from drf_yasg.utils import swagger_auto_schema # type:ignore
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 
 import secrets
+import os
+import environ
+
+env = environ.Env()
 
 class MyTokenObtainPairView(TokenObtainPairView):
     serializer_class = api_serializer.MyTokenObtainPairSerializer
+    permission_classes = [AllowAny]
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -70,7 +71,7 @@ class CheckUserEmailAPIView(APIView):
     """
     API to check if a user exists with the provided email.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     @swagger_auto_schema(
         request_body=openapi.Schema(
@@ -166,7 +167,7 @@ class TokenLoginAPIView(APIView):
             except Exception as e:
                 return Response({"warning": f"Error deleting login token: {e}"}, status=status.HTTP_200_OK) #Non-critical error
 
-            business = api_models.Business.objects.filter(user=user).first()
+            business = api_models.Business.objects.filter(owner=user).first()
             active_business_id = business.id if business else None
 
             return Response({
@@ -188,34 +189,60 @@ class BusinessGetView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         try:
-            id = self.kwargs['business_id']
-            business = api_models.Business.objects.get(id=id)
-            return business
+            business_id = self.kwargs['business_id']
+            return api_models.Business.objects.get(id=business_id)
         except api_models.Business.DoesNotExist:
-            return Response({"error": "Business not found"}, status=status.HTTP_404_NOT_FOUND)
+            raise NotFound("Business not found")
         except Exception as e:
-            return Response({"error": f"An unexpected error occurred: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+            raise APIException(f"Error retrieving business: {str(e)}")
     
     def update(self, request, *args, **kwargs):
         try:
             business_instance = self.get_object()
-
+            
             name = request.data.get('name')
+            description = request.data.get('description')
             country = request.data.get('country')
+            currency = request.data.get('currency')
             state = request.data.get('state')
             city = request.data.get('city')
+            image = request.data.get('image', None)
 
-            business_instance.name = name
-            business_instance.country = country
-            business_instance.state = state
-            business_instance.city = city
+            if name:
+                business_instance.name = name
+            if description:
+                business_instance.description = description
+            if country:
+                business_instance.country = country
+            if currency:
+                business_instance.currency = currency
+            if state:
+                business_instance.state = state
+            if city:
+                business_instance.city = city
+            if image:
+                business_instance.image = image
 
             business_instance.save()
 
-            return Response({"message": "Business updated successfully"}, status=status.HTTP_200_OK)    
+            # Create notification for business update
+            api_models.Notification.objects.create(
+                business=business_instance,
+                title="Business updated",
+                description=f'Business "{business_instance.name}" was updated',
+                type="business_updated"
+            )
+
+            return Response({
+                "message": "Business updated successfully",
+                "data": api_serializer.BusinessSerializer(business_instance).data
+            }, status=status.HTTP_200_OK)
+            
         except Exception as e:
-            return Response({"error": f"Error updating business: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": f"Error updating business: {str(e)}"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 class BusinessCreateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -247,25 +274,67 @@ class BusinessCreateView(APIView):
 
             user = User.objects.get(id=user_id)
 
-            try:
-                active_business = api_models.Business.objects.get(owner=user, active=True)
-                active_business.active = False
-                active_business.save()
-            except api_models.Business.DoesNotExist:
-                pass #No active business found, do nothing
+            # Check user's product plan
+            if user.product_type == os.environ.get('BASIC_PLAN') and api_models.Business.objects.filter(owner=user).exists():
+                api_models.Notification.objects.create(
+                    business=api_models.Business.objects.get(owner=user),
+                    title="New business creation failed",
+                    description="Your attempt to create a new business has failed because of the current plan you are subscribed to, please upgrade your plan to create a new business.",
+                    type="business_created"
+                )
 
+                return Response(
+                    {"error": "Basic plan users can only create one business. Please upgrade your plan."}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            elif user.product_type == os.environ.get('PREMIUM_PLAN'):
+                business = api_models.Business.objects.create(
+                    owner=user,
+                    name=name,
+                    country=country,
+                    state=state,
+                    city=city,
+                    currency=currency,
+                    active=True,
+                )
 
-            api_models.Business.objects.create(
-                owner=user,
-                name=name,
-                country=country,
-                state=state,
-                city=city,
-                currency=currency,
-                active=True,
-            )
-            
-            return Response({"message": "Business created successfully"}, status=status.HTTP_201_CREATED)
+                business.save()
+
+                api_models.Notification.objects.create(
+                    business=business,
+                    title="New business created",
+                    description="A new business has been created",
+                    type="business_created"
+                )
+                
+                return Response({"message": "Business created successfully", "id": business.id}, status=status.HTTP_201_CREATED)
+            elif user.product_type == os.environ.get('BASIC_PLAN') and not api_models.Business.objects.filter(owner=user).exists():
+                business = api_models.Business.objects.create(
+                    owner=user,
+                    name=name,
+                    country=country,
+                    state=state,
+                    city=city,
+                    currency=currency,
+                    active=True,
+                )
+
+                business.save()
+
+                api_models.Notification.objects.create(
+                    business=business,
+                    title="New business created",
+                    description="A new business has been created",
+                    type="business_created"
+                )
+                
+                return Response({"message": "Business created successfully", "id": business.id}, status=status.HTTP_201_CREATED)
+            else:
+                # Handle unknown or unrecognized plan
+                return Response(
+                    {"error": "Unknown subscription plan. Please contact support."}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
         except User.DoesNotExist:
             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
@@ -281,6 +350,16 @@ class InvoiceListView(generics.ListAPIView):
             business = api_models.Business.objects.get(id=business_id)
 
             invoices = api_models.Invoice.objects.filter(business=business)
+
+            # Calculate totals in a single query using aggregate
+            for invoice in invoices:
+                total_price = api_models.Invoice_item.objects.filter(invoice=invoice).aggregate(
+                    total=Sum('quantity') * Sum('product__price')
+                )['total'] or 0
+                
+                if invoice.total != total_price:
+                    invoice.total = total_price
+                    invoice.save()
 
             return invoices
         except api_models.Business.DoesNotExist:
@@ -308,22 +387,53 @@ class InvoiceCreateView(APIView):
     )
 
     def post(self, request):
-        # Get data from request
-        user_id = request.data.get('user_id')
-        business_id = request.data.get('business_id')
-        title = request.data.get('title')
-        description = request.data.get('description')
-        customer_name = request.data.get('customer_name')
-        date_due = request.data.get('date_due')
-
         try:
-            # Get the user instance
-            user = User.objects.get(id=user_id)
-            # Get the business instance associated with the user
-            business = api_models.Business.objects.get(id=business_id)
-            customer = api_models.Customer.objects.get(full_name=customer_name, business=business)
+            # Get data from request
+            user_id = request.data.get('user_id')
+            business_id = request.data.get('business_id')
+            title = request.data.get('title')
+            description = request.data.get('description')
+            customer_name = request.data.get('customer_name')
+            date_due = request.data.get('date_due')
 
-            # Create the invoice
+            # Validate required fields
+            required_fields = {'user_id', 'business_id', 'title', 'customer_name'}
+            missing_fields = [field for field in required_fields if not request.data.get(field)]
+            if missing_fields:
+                return Response(
+                    {"error": f"Missing required fields: {', '.join(missing_fields)}"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Get related objects
+            try:
+                user = User.objects.get(id=user_id)
+                business = api_models.Business.objects.get(id=business_id)
+                customer = api_models.Customer.objects.get(full_name=customer_name, business=business)
+            except User.DoesNotExist:
+                return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+            except api_models.Business.DoesNotExist:
+                return Response({"error": "Business not found"}, status=status.HTTP_404_NOT_FOUND)
+            except api_models.Customer.DoesNotExist:
+                return Response({"error": "Customer not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            # Check invoice limit for basic plan
+            invoices_count = api_models.Invoice.objects.filter(owner=user).count()
+            INVOICE_LIMIT = 15
+            
+            if invoices_count >= INVOICE_LIMIT and user.product_type == os.environ.get('BASIC_PLAN'):
+                api_models.Notification.objects.create(
+                    business=business,
+                    title="New invoice creation failed",
+                    description=f'Invoice creation for customer "{customer.full_name}" has failed due to your current plan, please upgrade your plan to create more invoices.',
+                    type="invoice_creation_failed"
+                )
+                return Response(
+                    {"error": "Maximum invoice limit reached for basic plan"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Create invoice
             invoice = api_models.Invoice(
                 owner=user,
                 business=business,
@@ -333,31 +443,27 @@ class InvoiceCreateView(APIView):
                 date_due=date_due,
             )
 
-            invoice.save()
+            # Create notification
+            api_models.Notification.objects.create(
+                business=business,
+                title="New invoice created",
+                description=f'A new invoice has been created for customer "{customer.full_name}"',
+                type="invoice_created"
+            )
 
-            return Response({"message": f"{invoice.Uid}"}, status=status.HTTP_201_CREATED)
+            return Response(
+                {
+                    "message": invoice.Uid,
+                }, 
+                status=status.HTTP_201_CREATED
+            )
 
-        except User.DoesNotExist:
-            return Response(
-                {"error": "User not found"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except api_models.Business.DoesNotExist:
-            return Response(
-                {"error": "Business not found for this user"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-        except api_models.Customer.DoesNotExist:
-            return Response(
-                {"error": "Customer not found for this business"}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
         except Exception as e:
             return Response(
-                {"error": str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": f"Error creating invoice: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-    
+        
 class InvoiceView(generics.RetrieveAPIView):
     serializer_class = api_serializer.InvoiceSerializer
     permission_classes = [IsAuthenticated]
@@ -366,6 +472,15 @@ class InvoiceView(generics.RetrieveAPIView):
         try:
             invoice_id = self.kwargs['Uid']
             invoice = api_models.Invoice.objects.get(Uid=invoice_id)
+
+            total_price = api_models.Invoice_item.objects.filter(invoice=invoice).aggregate(
+                total=Sum('quantity') * Sum('product__price')
+            )['total'] or 0
+                
+            if invoice.total != total_price:
+                invoice.total = total_price
+                invoice.save()
+
             return invoice
         except api_models.Invoice.DoesNotExist:
             return Response({"error": "Invoice not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -430,56 +545,19 @@ class InvoiceUpdateView(APIView):
             return Response({"error": f"Error updating invoice: {e}"}, status=status.HTTP_400_BAD_REQUEST)
 
     
-class CategoryListView(generics.ListAPIView):
-    serializer_class = api_serializer.CategorySerializer
+class CategoryListView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
+    def get(self, request, business_id):
         try:
-            user_id = self.kwargs['business_id']
-            user = User.objects.get(id=user_id)
-            business = api_models.Business.objects.get(owner=user, active=True)
+            business = api_models.Business.objects.get(id=business_id)
             categories = api_models.Category.objects.filter(business=business)
-            return categories
-        except (User.DoesNotExist, api_models.Business.DoesNotExist):
+            serializer = api_serializer.CategorySerializer(categories, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except (api_models.Business.DoesNotExist, api_models.Business.DoesNotExist):
             return Response({"error": "Business not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"error": f"Error retrieving categories: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-class CategoryCreateView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    @swagger_auto_schema(
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=['user_id', 'name'],
-            properties={
-                'user_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='User ID'),
-                'name': openapi.Schema(type=openapi.TYPE_STRING, description='Category name'),
-            }
-        ),
-        operation_description="Create a new category for a user"
-    )
-
-    def post(self, request, *args, **kwargs):
-        try:
-            user_id = request.data["user_id"]
-            name = request.data["name"]
-            user = User.objects.get(id=user_id)
-            business = api_models.Business.objects.get(owner=user, active=True)
-
-            api_models.Category.objects.create(
-                name=name, 
-                business=business
-            )
-
-            return Response({"message": "Category created successfully"}, status=status.HTTP_201_CREATED)
-        except User.DoesNotExist:
-            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
-        except api_models.Business.DoesNotExist:
-            return Response({"error": "Business not found"}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response({"error": f"Error creating category: {e}"}, status=status.HTTP_400_BAD_REQUEST)
 
 class CategoryView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = api_serializer.CategorySerializer
@@ -548,11 +626,20 @@ class CustomerCreateView(APIView):
             user_id = request.data["user_id"]
             business = api_models.Business.objects.get(id=user_id)
 
-            api_models.Customer.objects.create(
+            customer = api_models.Customer.objects.create(
                 full_name=full_name, 
                 email=email, 
                 phone_number=phone_number, 
                 business=business
+            )
+
+            customer.save()
+
+            api_models.Notification.objects.create(
+                business=business,
+                title="New customer created",
+                description=f'A new customer has been created "{customer.full_name}"',
+                type="customer_added"
             )
 
             return Response({"message": "Customer created successfully"}, status=status.HTTP_201_CREATED)
@@ -569,7 +656,7 @@ class CustomerView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         try:
-            customer_id = self.kwargs['business_id']
+            customer_id = self.kwargs['id']
             customer = api_models.Customer.objects.get(id=customer_id)
             return customer
         except api_models.Customer.DoesNotExist:
@@ -645,6 +732,13 @@ class ProductCreateView(APIView):
 
             product.save()
 
+            api_models.Notification.objects.create(
+                business=business,
+                title="New product created",
+                description=f'A new product has been created "{product.name}"',
+                type="product_added"
+            )
+
             return Response({"message": "Product created successfully"}, status=status.HTTP_201_CREATED)
         except (User.DoesNotExist, api_models.Business.DoesNotExist, api_models.Category.DoesNotExist):
             return Response({"error": "Related object not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -659,12 +753,12 @@ class ProductView(generics.RetrieveUpdateDestroyAPIView):
     def get_object(self):
         try:
             user_id = self.kwargs['business_id']
-            product_id = self.kwargs['business_id']
+            product_id = self.kwargs['id']
             business = api_models.Business.objects.get(id=user_id)
             product = api_models.Product.objects.get(id=product_id, owner=business)
             return product
         except (User.DoesNotExist, api_models.Business.DoesNotExist, api_models.Product.DoesNotExist):
-            return Response({"error": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
+            raise NotFound({"error": "Product not found"})
         except Exception as e:
             return Response({"error": f"Error retrieving product: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -693,10 +787,19 @@ class ProductView(generics.RetrieveUpdateDestroyAPIView):
             return Response({"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"error": f"Error updating product: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+        
+    def destroy(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            instance.delete()
+            return Response({"message": "Product deleted successfully"}, status=status.HTTP_200_OK)
+        except Exception as e:
+            print(e)
+            return Response({"error": f"Error deleting product: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 class InvoiceItemListView(generics.ListAPIView):
     serializer_class = api_serializer.InvoiceItemSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         try:
@@ -704,10 +807,11 @@ class InvoiceItemListView(generics.ListAPIView):
             invoice = api_models.Invoice.objects.get(Uid=invoice_id)
             invoice_items = api_models.Invoice_item.objects.filter(invoice=invoice)
 
-            total_price = 0
+            total_price = api_models.Invoice_item.objects.filter(invoice=invoice).aggregate(
+                total=Sum('quantity') * Sum('product__price')
+            )['total'] or 0
 
-            for item in invoice_items:
-                total_price += item.price()
+            if invoice.total != total_price:
                 invoice.total = total_price
                 invoice.save()
 
@@ -767,8 +871,10 @@ class InvoiceItemView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         try:
-            invoice_item_id = self.kwargs['business_id']
-            invoice_item = api_models.Invoice_item.objects.get(id=invoice_item_id)
+            invoice_item_id = self.kwargs['id']
+            invoice_id = self.kwargs['invoice_id']
+            invoice = api_models.Invoice.objects.get(Uid=invoice_id)
+            invoice_item = api_models.Invoice_item.objects.get(id=invoice_item_id, invoice=invoice)
             return invoice_item
         except api_models.Invoice_item.DoesNotExist:
             return Response({"error": "Invoice item not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -776,43 +882,47 @@ class InvoiceItemView(generics.RetrieveUpdateDestroyAPIView):
             return Response({"error": f"Error retrieving invoice item: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def update(self, request, *args, **kwargs):
-        invoice_item_instance = self.get_object()
-        quantity = request.data["quantity"]
-        user_id = request.data["user_id"]
-        product_id = request.data["product_id"]
-        user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user, active=True)
-        product = api_models.Product.objects.get(id=product_id, owner=business)
-        invoice_item_instance.quantity = quantity
-        invoice_item_instance.product = product
-        invoice_item_instance.save()
+        try:
+            invoice_item_instance = self.get_object()
+            
+            # Validate quantity exists in request data
+            if "quantity" not in request.data:
+                return Response(
+                    {"error": "Quantity is required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            quantity = request.data["quantity"]
+            
+            # Validate quantity is positive integer
+            try:
+                quantity = int(quantity)
+                if quantity <= 0:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return Response(
+                    {"error": "Quantity must be a positive integer"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        return Response({"message": "Invoice item updated successfully"}, status=status.HTTP_200_OK)
+            invoice_item_instance.quantity = quantity
+            invoice_item_instance.save()
 
-class CategoryCreateView(generics.CreateAPIView):
-    permission_classes = [IsAuthenticated]
-
-    @swagger_auto_schema(
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=['user_id', 'name'],
-            properties={
-                'user_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='User ID'),
-                'name': openapi.Schema(type=openapi.TYPE_STRING, description='Category Name'),
-            }
-        ),
-        operation_description="Create a new category for a business"
-    )
-    
-    def post(self, request, *args, **kwargs):
-        user_id = request.data["user_id"]
-        name = request.data["name"]
-
-        user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user, active=True)
-
-        api_models.Category.objects.create(business=business, name=name)
-        return Response({"message": "Category created successfully"}, status=status.HTTP_201_CREATED)
+            return Response(
+                {"message": "Invoice item updated successfully"}, 
+                status=status.HTTP_200_OK
+            )
+            
+        except api_models.Invoice_item.DoesNotExist:
+            return Response(
+                {"error": "Invoice item not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Error updating invoice item: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class AdminView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
@@ -856,8 +966,7 @@ class DashboardStatsView(generics.ListAPIView):
 
     def get_queryset(self):
         user_id = self.kwargs["business_id"]
-        user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user, active=True)
+        business = api_models.Business.objects.get(id=user_id)
 
         invoiceData = api_models.Invoice.objects.filter(business=business).annotate(month=ExtractMonth("date_created")).values("month").annotate(invoices=Count("id")).values("month", "invoices")
 
@@ -892,31 +1001,6 @@ class ReceiptListView(generics.ListAPIView):
         receipts = api_models.Receipt.objects.filter(business=business)
         return receipts
 
-class CategoryCreateView(generics.CreateAPIView):
-    permission_classes = [IsAuthenticated]
-
-    @swagger_auto_schema(
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=['user_id', 'name'],
-            properties={
-                'user_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='User ID'),
-                'name': openapi.Schema(type=openapi.TYPE_STRING, description='Category Name'),
-            }
-        ),
-        operation_description="Create a new category for a business"
-    )
-    
-    def post(self, request, *args, **kwargs):
-        user_id = request.data["user_id"]
-        name = request.data["name"]
-
-        user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user, active=True)
-
-        api_models.Category.objects.create(business=business, name=name)
-        return Response({"message": "Category created successfully"}, status=status.HTTP_201_CREATED)
-
 class ReceiptGetView(generics.RetrieveAPIView):
     serializer_class = api_serializer.ReceiptSerializer
     permission_classes = [IsAuthenticated]
@@ -933,6 +1017,44 @@ class ReceiptGetView(generics.RetrieveAPIView):
             return Response({"error": "Receipt not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({"error": f"Error retrieving receipt: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class ReceiptCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        try:
+            user_id = request.data['user_id']
+            business_id = request.data['business_id']
+            customer_id = request.data['customer_id']
+            uid = request.data['uid']
+
+            user = User.objects.get(id=user_id)
+            business = api_models.Business.objects.get(id=business_id)
+            customer = api_models.Customer.objects.get(id=customer_id)
+            invoice = api_models.Invoice.objects.get(Uid=uid, business=business)
+                
+            receipt = api_models.Receipt.objects.create(
+                owner=user,
+                business=business,
+                customer=customer,
+                invoice=invoice,
+            )
+
+            receipt.save()
+
+            api_models.Notification.objects.create(
+                business=business,
+                title='New receipt created',
+                description="A new receipt has been created",
+                type="receipt_created"
+            )
+                
+            return Response({"Uid": receipt.Uid}, status=status.HTTP_201_CREATED)
+        except api_models.Business.DoesNotExist:
+            return Response({"error": "Business not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": f"Error creating receipt: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class CategoryCreateView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated]
@@ -957,29 +1079,284 @@ class CategoryCreateView(generics.CreateAPIView):
         business = api_models.Business.objects.get(owner=user)
 
         api_models.Category.objects.create(business=business, name=name)
-        return Response({"message": "Category created successfully"}, status=status.HTTP_201_CREATED)
 
-class CategoryCreateView(generics.CreateAPIView):
+        api_models.Notification.objects.create(
+            business=business,
+            title=f'New category created "{name}"',
+            description="A new category has been created",
+            type="category_created"
+        )
+
+        return Response({"message": "Category created successfully"}, status=status.HTTP_201_CREATED)
+    
+class NotificationListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                name='business_id',
+                in_=openapi.IN_QUERY,
+                type=openapi.TYPE_INTEGER,
+                description='ID of the business'
+            ),
+        ],
+        operation_description="List notifications for a business"
+    )
+
+    def get(self, request,):
+        business_id = request.query_params.get('business_id')
+        
+        if business_id:
+            try:
+                business = api_models.Business.objects.get(id=business_id)
+                notifications = api_models.Notification.objects.filter(business=business)
+                serializer = api_serializer.NotificationSerializer(notifications, many=True)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            except api_models.Business.DoesNotExist:
+                return Response({"error": "Business not found"}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            return Response({"error": "Business ID is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+class NotificationMarkAllReadAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                name='business_id',
+                in_=openapi.IN_QUERY,
+                type=openapi.TYPE_INTEGER,
+                description='ID of the business'
+            ),
+        ],
+        operation_description="Mark all notifications for a business as read"
+    )
+
+    def put(self, request):
+        business_id = request.query_params.get('business_id')
+
+        if business_id:
+            try:
+                business = api_models.Business.objects.get(id=business_id)
+                notifications = api_models.Notification.objects.filter(business=business)
+                notifications.update(seen=True)
+                return Response({"message": "Notifications marked as read successfully"}, status=status.HTTP_200_OK)
+            except api_models.Business.DoesNotExist:
+                return Response({"error": "Business not found"}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            return Response({"error": "Business ID is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+class InvoiceAccessTokenCreateView(APIView):
+    permission_classes = [AllowAny]
 
     @swagger_auto_schema(
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=['user_id', 'name'],
+            required=['email', 'Uid'],
             properties={
-                'user_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='User ID'),
-                'name': openapi.Schema(type=openapi.TYPE_STRING, description='Category Name'),
+                'email': openapi.Schema(type=openapi.TYPE_STRING, description='Customer email'),
+                'Uid': openapi.Schema(type=openapi.TYPE_STRING, description='Invoice UID'),
             }
         ),
-        operation_description="Create a new category for a business"
+        operation_description="Create an invoice access token for a customer"
     )
-    
-    def post(self, request, *args, **kwargs):
-        user_id = request.data["user_id"]
-        name = request.data["name"]
 
-        user = User.objects.get(id=user_id)
-        business = api_models.Business.objects.get(owner=user)
+    def post(self, request):
+        try:
+            email = request.data["email"]
+            invoice_id = request.data["Uid"]
+            invoice = api_models.Invoice.objects.get(Uid=invoice_id)
 
-        api_models.Category.objects.create(business=business, name=name)
-        return Response({"message": "Category created successfully"}, status=status.HTTP_201_CREATED)
+            if invoice.customer.email != email:
+                return Response({"error": "No invoice found with the provided email"}, status=status.HTTP_400_BAD_REQUEST)
+
+            existing_token = api_models.InvoiceAccessToken.objects.filter(
+                invoice=invoice,
+            ).first()
+
+            if existing_token and existing_token.is_valid():
+                return Response({
+                    "token": existing_token.token,
+                    "message": "Using existing valid token"
+                }, status=status.HTTP_200_OK)
+
+            # Create new token and delete the old one if no valid one exists
+            if existing_token:
+                existing_token.delete()
+            token = api_models.InvoiceAccessToken.create_token(invoice)
+            return Response({"token": token}, status=status.HTTP_201_CREATED)
+
+        except api_models.Invoice.DoesNotExist:
+            return Response({"error": "Invoice not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class VerifyInvoiceTokenView(APIView):
+    """
+    API to retrieve the invoice related with an invoice view token
+    """
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['token'],
+            properties={
+                'token': openapi.Schema(type=openapi.TYPE_STRING, description='Invoice access token'),
+            }
+        ),
+        responses={
+            200: openapi.Response('Success', api_serializer.InvoiceSerializer),
+            400: 'Invalid token',
+            404: 'Token not found',
+            500: 'Server error'
+        },
+        operation_description="Verify an invoice access token and return invoice details"
+    )
+    def post(self, request):
+        try:
+            # Validate token
+            token_serializer = api_serializer.InvoiceAccessTokenSerializer(data=request.data)
+            if not token_serializer.is_valid():
+                return Response({
+                    "error": "Invalid token",
+                    "details": token_serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Get invoice from validated token
+            invoice = token_serializer.invoice
+            
+            # Serialize invoice data
+            invoice_serializer = api_serializer.InvoiceSerializer(invoice)
+            
+            # Create notification for invoice view
+            api_models.Notification.objects.create(
+                business=invoice.business,
+                title="Invoice viewed",
+                description=f'Invoice {invoice.Uid} has been viewed by customer',
+                type="invoice_viewed"
+            )
+            
+            return Response({
+                "invoice": invoice_serializer.data,
+                "message": "Token verified successfully"
+            }, status=status.HTTP_200_OK)
+            
+        except api_models.InvoiceAccessToken.DoesNotExist:
+            return Response({
+                "error": "Token not found"
+            }, status=status.HTTP_404_NOT_FOUND)
+            
+        except api_models.Invoice.DoesNotExist:
+            return Response({
+                "error": "Invoice not found"
+            }, status=status.HTTP_404_NOT_FOUND)
+            
+        except Exception as e:
+            return Response({
+                "error": "An error occurred while verifying the token",
+                "details": str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class BusinessGetByNameView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                'name', 
+                openapi.IN_QUERY,
+                description="Business name to search for",
+                type=openapi.TYPE_STRING,
+                required=True
+            )
+        ],
+        responses={
+            200: openapi.Response('Success', api_serializer.BusinessSerializer),
+            400: 'Bad Request',
+            404: 'Business not found'
+        }
+    )
+    def get(self, request):
+        name = request.query_params.get('name')
+        if not name:
+            return Response({"error": "Name parameter is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            business = api_models.Business.objects.get(name=name)
+            serializer = api_serializer.BusinessSerializer(business)
+
+            # Create notification for business search
+            api_models.Notification.objects.create(
+                business=business,
+                title="Business searched",
+                description=f'Business "{business.name}" was searched',
+                type="business_searched"
+            )
+
+            return Response({"data": serializer.data}, status=status.HTTP_200_OK)
+        except api_models.Business.DoesNotExist:
+            return Response({"error": "Business not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": f"Error retrieving business: {str(e)}"}, 
+                          status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class UserBusinessListView(APIView):
+    """
+    API to list all businesses owned by a user
+    """
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                'user_id',
+                openapi.IN_QUERY,
+                description="ID of the user",
+                type=openapi.TYPE_INTEGER,
+                required=True
+            ),
+        ],
+        responses={
+            200: openapi.Response('Success', api_serializer.BusinessSerializer(many=True)),
+            400: 'Bad Request',
+            404: 'User not found'
+        },
+        operation_description="List all businesses owned by a user"
+    )
+    def get(self, request):
+        try:
+            user_id = request.query_params.get('user_id')
+            if not user_id:
+                return Response(
+                    {"error": "User ID is required"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            user = User.objects.get(id=user_id)
+            businesses = api_models.Business.objects.filter(owner=user)
+            
+            if not businesses.exists():
+                return Response(
+                    {"message": "No businesses found for this user"}, 
+                    status=status.HTTP_200_OK
+                )
+
+            serializer = api_serializer.BusinessSerializer(businesses, many=True)
+            return Response({
+                "data": serializer.data,
+                "message": "Businesses retrieved successfully"
+            }, status=status.HTTP_200_OK)
+
+        except User.DoesNotExist:
+            return Response(
+                {"error": "User not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"An error occurred: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+

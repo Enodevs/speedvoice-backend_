@@ -9,9 +9,15 @@ urlpatterns = [
     path('user/', api_views.UserAPIView.as_view()),
 
     path('auth/generate-login-token/', api_views.GenerateLoginTokenAPIView.as_view(), name='generate_login_token'),
+    path('auth/generate-invoice-token/', api_views.InvoiceAccessTokenCreateView.as_view(), name='generate_invoice_token'),
     path('auth/token-login/', api_views.TokenLoginAPIView.as_view(), name='token_login'),
-    path('auth/business-create/', api_views.BusinessCreateView.as_view()),
-    path('auth/business/<int:business_id>/', api_views.BusinessGetView.as_view()),
+    path('auth/verify-invoice-token/', api_views.VerifyInvoiceTokenView.as_view(), name='verify_invoice_token'),
+    path('auth/business-get-by-name/', api_views.BusinessGetByNameView.as_view(), name='business_get_by_name'),
+    
+    # Business endpoints
+    path('auth/business/list/', api_views.UserBusinessListView.as_view(), name='user-businesses'),
+    path('auth/business-create/', api_views.BusinessCreateView.as_view(), name='business-create'),
+    path('auth/business/<int:business_id>/', api_views.BusinessGetView.as_view(), name='business-detail'),
     path('auth/check-user-email/', api_views.CheckUserEmailAPIView.as_view(), name='check_user_email'),
 
     ########### Invoice ###########
@@ -25,8 +31,6 @@ urlpatterns = [
     path('dashboard/categories/<int:business_id>/', api_views.CategoryListView.as_view(), name='categories_list'),
     path('dashboard/categories-create/', api_views.CategoryCreateView.as_view()),
     path('dashboard/categories/<int:business_id>/<name>/', api_views.CategoryView.as_view()),
-    path('dashboard/categories/<int:business_id>/', api_views.CategoryListView.as_view(), name="Category_list"),
-    path('dashboard/categories-create/', api_views.CategoryCreateView.as_view()),
 
     ###########  Customer ###########
     path('dashboard/customers/<int:business_id>/', api_views.CustomerListView.as_view(), name='customers_list'),
@@ -36,7 +40,7 @@ urlpatterns = [
     ###########  Invoice item ###########
     path('dashboard/invoice-items/<invoice_id>/', api_views.InvoiceItemListView.as_view(), name='invoice_items_list'),
     path('dashboard/invoice-items-create/', api_views.InvoiceItemCreateView.as_view()),
-    path('dashboard/invoice-item/<id>/', api_views.InvoiceItemView.as_view()),
+    path('dashboard/invoice-items/<invoice_id>/<id>/', api_views.InvoiceItemView.as_view()),
 
     ###########  Product ###########
     path('dashboard/products/<int:business_id>/', api_views.ProductListView.as_view(), name='products_list'),
@@ -51,4 +55,9 @@ urlpatterns = [
     ###########  Receipts ###########
     path('dashboard/receipts/<int:business_id>/', api_views.ReceiptListView.as_view()),
     path('dashboard/receipt/<int:business_id>/<Uid>/', api_views.ReceiptGetView.as_view(), name='receipt_get'),
+    path('dashboard/receipt-create/', api_views.ReceiptCreateView.as_view(), name='receipt_create'),
+
+    ###########  Notifications ###########
+    path('dashboard/notifications/', api_views.NotificationListView.as_view()),
+    path('dashboard/notifications/read/', api_views.NotificationMarkAllReadAPIView.as_view()),
 ]

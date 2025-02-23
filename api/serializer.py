@@ -201,3 +201,39 @@ class ReceiptSerializer(serializers.ModelSerializer):
             self.Meta.depth = 0
         else:
             self.Meta.depth = 1
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = api_models.Notification
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super(NotificationSerializer, self).__init__(*args, **kwargs)
+        request = self.context.get('request')
+        if request and request.method == "POST":
+            self.Meta.depth = 0
+        else:
+            self.Meta.depth = 1
+
+class InvoiceAccessTokenSerializer(serializers.Serializer):
+    token = serializers.CharField()
+
+    def validate(self, data):
+        """
+        Ensure the provided token is valid.
+        """
+        token = data.get("token")
+        try:
+            invoice_access_token = api_models.InvoiceAccessToken.objects.get(token=token)
+        except api_models.InvoiceAccessToken.DoesNotExist:
+            raise serializers.ValidationError("Invalid token.")
+
+        if not invoice_access_token.is_valid():
+            raise serializers.ValidationError("Token has expired.")
+
+        self.invoice = invoice_access_token.invoice
+        return data        
+
+
+
+
