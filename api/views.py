@@ -276,8 +276,9 @@ class BusinessCreateView(APIView):
 
             # Check user's product plan
             if user.product_type == os.environ.get('BASIC_PLAN') and api_models.Business.objects.filter(owner=user).exists():
+                latest_business = api_models.Business.objects.filter(owner=user).latest('id')
                 api_models.Notification.objects.create(
-                    business=api_models.Business.objects.get(owner=user),
+                    business=latest_business,
                     title="New business creation failed",
                     description="Your attempt to create a new business has failed because of the current plan you are subscribed to, please upgrade your plan to create a new business.",
                     type="business_created"
