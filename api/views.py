@@ -360,7 +360,9 @@ class InvoiceListView(generics.ListAPIView):
                 
                 if invoice.total != total_price:
                     invoice.total = total_price
-                    invoice.save()
+
+                invoice.set_unpaid()
+                invoice.save()
 
             return invoices
         except api_models.Business.DoesNotExist:
@@ -443,6 +445,7 @@ class InvoiceCreateView(APIView):
                 customer=customer,
                 date_due=date_due,
             )
+            invoice.save()
 
             # Create notification
             api_models.Notification.objects.create(
@@ -480,13 +483,20 @@ class InvoiceView(generics.RetrieveAPIView):
                 
             if invoice.total != total_price:
                 invoice.total = total_price
-                invoice.save()
+
+            invoice.set_unpaid()
+            invoice.save()
 
             return invoice
         except api_models.Invoice.DoesNotExist:
-            return Response({"error": "Invoice not found"}, status=status.HTTP_404_NOT_FOUND)
+            raise NotFound({"error": "Invoice not found"})
         except Exception as e:
             return Response({"error": f"Error retrieving invoice: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def get(self, request, *args, **kwargs):
+        invoice_instance = self.get_object()
+        serializer = self.get_serializer(invoice_instance)
+        return Response(serializer.data)
 
 class InvoiceDeleteView(generics.DestroyAPIView):
     permission_classes = [IsAuthenticated]

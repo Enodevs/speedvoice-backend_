@@ -109,7 +109,6 @@ class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = api_models.Invoice
         fields = "__all__"
-        read_only_fields = ['id', 'Uid', 'date_created',]
 
     def __init__(self, *args, **kwargs):
         super(InvoiceSerializer, self).__init__(*args, **kwargs)

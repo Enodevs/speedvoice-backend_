@@ -148,12 +148,11 @@ class Invoice(models.Model):
         return super(Invoice, self).save()
 
     def set_unpaid(self):
-        if self.date_due is not None and now() < self.date_due and self.status != "paid":
-            self.status = "unpaid"
-            return "done"
+        if now() < self.date_due:
+            self.status = "unpaid" if self.status != "paid" else self.status
         else:
             self.status = "pending"
-            return "done"
+        return "done"
 
 class Invoice_item(models.Model):
     # id = ShortUUIDField(length=1, max_length=2, primary_key=True, unique=True, alphabet="1234567890")
