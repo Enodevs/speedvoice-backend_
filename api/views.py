@@ -18,6 +18,7 @@ from drf_yasg.utils import swagger_auto_schema
 import secrets
 import os
 import environ
+from django.core.cache import cache
 
 env = environ.Env()
 
@@ -350,7 +351,8 @@ class InvoiceListView(generics.ListAPIView):
             business_id = self.kwargs['business_id']
             business = api_models.Business.objects.get(id=business_id)
 
-            invoices = api_models.Invoice.objects.filter(business=business)
+            # Use prefetch_related to fetch related invoice items in one query
+            invoices = api_models.Invoice.objects.filter(business=business).prefetch_related('invoice_item_set')
 
             # Calculate totals in a single query using aggregate
             for invoice in invoices:
@@ -1344,14 +1346,13 @@ class UserBusinessListView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            user = User.objects.get(id=user_id)
-            businesses = api_models.Business.objects.filter(owner=user)
-            
-            if not businesses.exists():
-                return Response(
-                    {"message": "No businesses found for this user"}, 
-                    status=status.HTTP_200_OK
-                )
+            cache_key = f'user_businesses_{user_id}'
+            businesses = cache.get(cache_key)
+
+            if businesses is None:
+                user = User.objects.get(id=user_id)
+                businesses = api_models.Business.objects.filter(owner=user)
+                cache.set(cache_key, businesses, timeout=60 * 15)  # Cache for 15 minutes
 
             serializer = api_serializer.BusinessSerializer(businesses, many=True)
             return Response({
